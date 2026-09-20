@@ -69,13 +69,11 @@ multiboot_entry:
     or eax, 0b11 ; Present + Writable
     mov [pml4_table], eax
 
-    ; PDPT -> PD
-    mov eax, pd_table
-    or eax, 0b11 ; Present + Writable
-    mov [pdpt_table], eax
-
-    mov eax, 0b10000011 ; Present + Writable + HugePage(2MB)
-    mov [pd_table], eax
+    ; PDPT -> 1GB page
+    mov dword [pdpt_table + 0],  0x00000083 ; 0 GiB - 1 GiB
+    mov dword [pdpt_table + 8],  0x40000083 ; 1 GiB - 2 GiB
+    mov dword [pdpt_table + 16], 0x80000083 ; 2 GiB - 3 GiB
+    mov dword [pdpt_table + 24], 0xc0000083 ; 3 GiB - 4 GiB
 
 
     mov eax, pml4_table
@@ -142,8 +140,7 @@ pml4_table:
     resb 4096
 pdpt_table:
     resb 4096
-pd_table:
-    resb 4096
+
 
 align 16
 stack_bottom:
