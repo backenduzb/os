@@ -3,6 +3,7 @@ use crate::println;
 const MULTIBOOT2_BOOTLOADER_MAGIC: u32 = 0x36d76289;
 const TAG_TYPE_END: u32 = 0;
 const TAG_TYPE_FRAMEBUFFER: u32 = 8;
+const TAG_TYPE_MEMMMAP: u32 = 17;
 
 #[repr(C)]
 struct MultibootInfo {
@@ -33,6 +34,24 @@ struct FramebufferTag {
     green_mask_size: u8,
     blue_position: u8,
     blue_mask_size: u8,
+}
+#[repr(C)]
+struct MemmapTag {
+    tag_type: u32,
+    size: u32,
+    descriptor_size: u32,
+    descriptor_version: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct EfiMemoryDesc {
+    pub ty: u32,
+    pub pad: u32,
+    pub phys_start: u64,
+    pub virt_start: u64,
+    pub page_count: u64,
+    pub attribute: u64,
 }
 
 /// ブート情報の検証と初期化（Multiboot2の詳細をここに隠蔽）
@@ -65,6 +84,29 @@ pub fn init(magic: u32, multiboot_info_addr: usize) {
                 fb.address, fb.width, fb.height, fb.bpp
             );
             break;
+        }
+        if tag.tag_type == TAG_TYPE_MEMMMAP {
+            let efi_mmap_tag = unsafe { &*((multiboot_info_addr + offset) as *const MemmapTag)};
+            let desc_size = efi_mmap_tag.descriptor_size as usize;
+            let header_size = core::mem::size_of::<MemmapTag>();
+            let desc_count = (efi_mmap_tag.size as usize - header_size) / desc_size;
+
+            let mut desc_ptr = (multiboot_info_addr + offset + header_size) as *const EfiMemoryDesc;
+
+            println!("--- UEFI Memory Map ---");
+            for _ in 0..desc_count {
+                let desc = unsafe {*desc_ptr};
+
+                let is_ram = desc.ty == 7;
+                let type_str = if is_ram { "RAM (Conventional)" } else { "Reserved/Other" };
+
+                let length = desc.page_count * 4096;
+                println!(
+                    "Base: 0x{:016x}, Len: 0x{:016x} [{}]",
+                    desc.phys_start, length, type_str
+                );
+                desc_ptr = ((desc_ptr as usize) + desc_size) as *const EfiMemoryDesc;
+            }
         }
         offset += (tag.size as usize + 7) & !7;
     }
